@@ -1,0 +1,103 @@
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+
+    // === API: GET CONFIGURATION ===
+    if (request.method === "GET" && url.pathname === "/config") {
+      let config = await env.CONFIG.get("site_config");
+      if (!config) {
+        return new Response(JSON.stringify({ enabled: true, targetUrl: "https://photon.23amtics322.workers.dev" }), {
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+      return new Response(config, { headers: { "Content-Type": "application/json" } });
+    }
+
+    // === API: SAVE CONFIGURATION ===
+    if (request.method === "POST" && url.pathname === "/config") {
+      try {
+        const config = await request.json();
+        await env.CONFIG.put("site_config", JSON.stringify(config));
+        return new Response("OK", { status: 200 });
+      } catch (err) {
+        return new Response("Invalid Payload", { status: 400 });
+      }
+    }
+
+    // === UI: SERVE DASHBOARD HTML ===
+    if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/admin")) {
+      return new Response(`
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>System Control Console</title>
+          <style>
+            body { font-family: system-ui, sans-serif; background:#0e0e12; color:#f3f4f6; padding:40px; max-width:600px; margin:auto; }
+            .card { background:#1c1c24; padding:30px; border-radius:12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border: 1px solid #2d2d3d; }
+            h1 { margin-top:0; color:#00ff9d; font-size:24px; }
+            label { display:block; margin:20px 0 8px; font-weight:600; color:#9ca3af; }
+            input[type="text"] { background:#111116; border:1px solid #3b3b4f; color:#fff; padding:12px; width:100%; box-sizing:border-box; border-radius:8px; font-size:16px; }
+            .toggle-container { display:flex; align-items:center; margin:20px 0; }
+            input[type="checkbox"] { width:20px; height:20px; accent-color:#00ff9d; margin-right:12px; cursor:pointer; }
+            button { background:#00ff9d; color:#0e0e12; font-weight:bold; border:none; padding:14px; width:100%; border-radius:8px; font-size:16px; cursor:pointer; transition:all 0.2s; }
+            button:hover { background:#00cc7a; transform: translateY(-1px); }
+            .status { padding:12px; background:#111116; border-radius:6px; margin-bottom:20px; border-left:4px solid #00ff9d; font-size:14px; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <h1>Proxy Management Control</h1>
+            <div class="status" id="status">Connecting to Storage Engine...</div>
+                    
+            <label>Target Original Site URL:</label>
+            <input type="text" id="targetUrl" placeholder="https://original-website.com">
+                    
+            <div class="toggle-container">
+              <input type="checkbox" id="enabled">
+              <label for="enabled" style="margin:0; cursor:pointer;">Enable Site Playback</label>
+            </div>
+                    
+            <button onclick="saveConfig()">Apply System Settings</button>
+          </div>
+
+          <script>
+            async function loadConfig() {
+              try {
+                const res = await fetch('/config');
+                const config = await res.json();
+                document.getElementById('targetUrl').value = config.targetUrl || '';
+                document.getElementById('enabled').checked = config.enabled !== false;
+                document.getElementById('status').innerHTML = '✅ Active layout pulled from database.';
+              } catch (err) {
+                document.getElementById('status').innerHTML = 'ℹ️ Storage empty. Prepared to write configurations.';
+              }
+            }
+            async function saveConfig() {
+              document.getElementById('status').innerHTML = 'Saving updates...';
+              const config = {
+                enabled: document.getElementById('enabled').checked,
+                targetUrl: document.getElementById('targetUrl').value.trim()
+              };
+              const res = await fetch('/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(config)
+              });
+              if (res.ok) {
+                document.getElementById('status').innerHTML = '✅ System changes broadcasted successfully!';
+              } else {
+                document.getElementById('status').innerHTML = '❌ Storage engine sync failed.';
+              }
+            }
+            window.onload = loadConfig;
+          </script>
+        </body>
+        </html>
+      `, { headers: { "Content-Type": "text/html" } });
+    }
+
+    return new Response("Route Not Found", { status: 404 });
+  }
+};
